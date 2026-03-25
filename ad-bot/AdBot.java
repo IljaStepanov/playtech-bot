@@ -6,18 +6,19 @@ import java.io.PrintWriter;
 
 public class AdBot {
 
-	private static final String MY_CATEGORY = "Finance";
-	private static final double MIN_SPEND_RATIO = 0.30;
+	private static final String DEFAULT_CATEGORY = "Sports";
+	private static String botCategory = DEFAULT_CATEGORY;
+	private static final double MIN_SPEND_RATIO = 0.10;
 	private static final double MIN_MULTIPLIER = 0.65;
 	private static final double MAX_MULTIPLIER = 1.80;
 
 
 	private static final double ENGAGEMENT_WEIGHT = 0.38;
-	private static final double INTEREST_WEIGHT = 0.28;
+	private static final double INTEREST_WEIGHT = 0.34;
 	private static final double SUBSCRIPTION_WEIGHT = 0.14;
-	private static final double REACH_WEIGHT = 0.14;
+	private static final double REACH_WEIGHT = 0.08;
 	private static final double AGE_WEIGHT = 0.06;
-	private static final double CATEGORY_MATCH_BONUS = 0.05;
+	private static final double CATEGORY_MATCH_BONUS = 0.12;
 
 
 	private static final double ENGAGEMENT_RATIO_CAP = 0.02;
@@ -26,15 +27,17 @@ public class AdBot {
 	private static final double TARGET_AGE_HIGH = 44;
 
 
-	private static final double SPEND_PRESSURE_MULTIPLIER = 2.4;
+	private static final double SPEND_PRESSURE_MULTIPLIER = 0.25;
 	private static final double SIGNAL_MIN = 0.0;
 	private static final double SIGNAL_MAX = 1.5;
-	private static final double SIGNAL_LOW_THRESHOLD = 0.12;
+	private static final double SIGNAL_LOW_THRESHOLD = 0.14;
 	private static final double SIGNAL_MID_THRESHOLD = 0.35;
 	private static final double SIGNAL_HIGH_THRESHOLD = 0.70;
 	private static final double STRATEGY_BLEND_OLD = 0.60;
 	private static final double STRATEGY_BLEND_NEW = 0.40;
 	private static final double EFFICIENCY_TARGET_RATIO = 0.92;
+	private static final int PLANNED_TOTAL_ROUNDS = 250_000;
+	private static final int ROUND_FLOOR = 5_000;
 
 	private static final double[] ARM_MULTIPLIERS = {0.80, 0.95, 1.05, 1.20, 1.35};
 	private static final double EPSILON_START = 0.22;
@@ -54,6 +57,9 @@ public class AdBot {
 
 	public static void main(String[] args) throws IOException {
 		validateArguments(args);
+		if (args.length == 2) {
+			botCategory = normalizeCategory(args[1]);
+		}
 		long initialBudget = Long.parseLong(args[0]);
 		if (initialBudget <= 0) {
 			throw new IllegalArgumentException("Initial budget must be positive");
@@ -63,9 +69,17 @@ public class AdBot {
 	}
 
 	private static void validateArguments(String[] args) {
-		if (args.length != 1) {
-			throw new IllegalArgumentException("Expected one argument: initial ebucks budget");
+		if (args.length < 1 || args.length > 2) {
+			throw new IllegalArgumentException("Expected arguments: <initial ebucks budget> [category]");
 		}
+	}
+
+	private static String normalizeCategory(String rawCategory) {
+		if (rawCategory == null) {
+			return DEFAULT_CATEGORY;
+		}
+		String trimmed = rawCategory.trim();
+		return trimmed.isEmpty() ? DEFAULT_CATEGORY : trimmed;
 	}
 
 	private static void runBiddingLoop(long initialBudget) throws IOException {
@@ -75,7 +89,7 @@ public class AdBot {
 		TrackingState state = new TrackingState(initialBudget);
 		ImpressionData impression = new ImpressionData();
 
-		writer.println(MY_CATEGORY);
+		writer.println(botCategory);
 
 		String line;
 		while ((line = reader.readLine()) != null) {
@@ -164,8 +178,8 @@ public class AdBot {
 	}
 
 	private static boolean isCategoryMatch(String videoCategory) {
-		return videoCategory != null && MY_CATEGORY != null
-				&& videoCategory.trim().equalsIgnoreCase(MY_CATEGORY.trim());
+		return videoCategory != null && botCategory != null
+				&& videoCategory.trim().equalsIgnoreCase(botCategory.trim());
 	}
 
 	private static double calculateCategoryAffinity(String videoCategory, String[] interests) {
@@ -197,11 +211,19 @@ public class AdBot {
 		double effectiveMultiplier = state.bidMultiplier * ARM_MULTIPLIERS[armIndex];
 		
 		int[] baseBid = computeBaseBid(estimatedValue, state, roundsRemaining, effectiveMultiplier);
+		if (baseBid[1] <= 0) {
+			return new int[]{0, 0};
+		}
 		
 
 		double budgetHealth = getBudgetHealth(state);
 		double winRate = state.recentBids > 0 ? state.recentWins / (double) state.recentBids : 0.5;
 		double shadeRatio = calculateBidShade(estimatedValue, state.competitionLevel, budgetHealth, winRate);
+		boolean windowStalled = state.summaries > 0 && state.last100Spent == 0;
+		if (windowStalled) {
+			double recoveryShade = Math.max(shadeRatio, 0.90);
+			return applyShadedBid(baseBid, recoveryShade);
+		}
 		
 		if (shouldBid(estimatedValue, shadeRatio, state.competitionLevel, budgetHealth)) {
 			return applyShadedBid(baseBid, shadeRatio);
@@ -258,26 +280,26 @@ public class AdBot {
 	}
 
 	private static double computeStartFactor(double signal) {
-		double factor = 0.20 + (0.90 * signal);
+		double factor = 0.14 + (0.62 * signal);
 		if (signal > SIGNAL_HIGH_THRESHOLD) {
-			factor += 0.25;
+			factor += 0.16;
 		}
 		return factor;
 	}
 
 	private static double computeMaxFactor(double signal) {
-		double factor = 0.50 + (1.40 * signal);
+		double factor = 0.32 + (1.00 * signal);
 		if (signal > SIGNAL_HIGH_THRESHOLD) {
-			factor += 0.45;
+			factor += 0.24;
 		} else if (signal < SIGNAL_MID_THRESHOLD) {
-			factor *= 0.80;
+			factor *= 0.90;
 		}
 		return factor;
 	}
 
 	private static long computeExposureCap(TrackingState state, double signal) {
 		double cappedSignal = clamp(signal, 0.0, 1.0);
-		return Math.max(1L, Math.round(state.remainingBudget * (0.01 + (0.09 * cappedSignal))));
+		return Math.max(1L, Math.round(state.remainingBudget * (0.0020 + (0.0180 * cappedSignal))));
 	}
 
 
@@ -582,7 +604,7 @@ public class AdBot {
 			} else if (isFinanceLike(token) && isFinanceLike(category)) {
 				total += 0.85;
 			} else if (isEntertainmentLike(token) && isEntertainmentLike(category)) {
-				total += 0.55;
+				total += 0.25;
 			}
 		}
 
@@ -771,13 +793,16 @@ public class AdBot {
 
 	private static boolean shouldBid(double value, double shadeRatio, int competitionLevel, double budgetHealth) {
 		double shadedValue = value * shadeRatio;
-		double roiThreshold = competitionLevel == COMPETITION_LOW ? 0.45 : 0.25;
+		double roiThreshold = competitionLevel == COMPETITION_LOW ? 0.46 : 0.26;
 
 		if (budgetHealth < 0.15) {
 			roiThreshold *= 0.60;
 		}
 		if (competitionLevel == COMPETITION_HIGH) {
-			roiThreshold *= 0.70;
+			roiThreshold *= 0.78;
+		}
+		if (budgetHealth > 0.70) {
+			roiThreshold *= 1.08;
 		}
 
 		return shadedValue >= roiThreshold;
@@ -844,9 +869,8 @@ public class AdBot {
 	}
 
 	private static int estimateRoundsRemaining(TrackingState state) {
-		int rollingHorizon = (state.summaries + 4) * 100;
-		int remaining = rollingHorizon - state.totalRounds;
-		return Math.max(1, remaining);
+		int remaining = PLANNED_TOTAL_ROUNDS - state.totalRounds;
+		return Math.max(ROUND_FLOOR, remaining);
 	}
 
 	private static double ageRangeScore(String age) {

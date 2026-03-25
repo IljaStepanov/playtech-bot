@@ -1,27 +1,42 @@
-# AdBot — Playtech Summer Internship 2026
+# AdBot (Playtech PvP Simulation)
 
-A Java-based bidding bot for the Playtech Summer 2026 internship assignment.
-The bot participates in a simulated video ad auction, competing against other 
-bots to maximize points per ebuck spent.
+Java bot for the Playtech ad-auction simulator.
 
-## Strategy
+The bot reads impression lines from stdin and outputs bids in format:
 
-The bot advertises in the **Finance** category and evaluates each impression 
-using a weighted scoring model:
+`startBid maxBid`
 
-- Viewer engagement (comment/view ratio)
-- Interest match with Finance category
-- Subscription status
-- Audience reach
-- Age bracket (25–44 is the prime Finance demographic)
+Goal: maximize score (points per ebuck) under budget constraints.
 
-Bidding aggressiveness is controlled by an **epsilon-greedy multi-armed bandit**
-that learns which bid multiplier performs best over time. The bot also detects
-competition level (low/medium/high) based on win rate and adjusts its strategy
-every 100 rounds using efficiency feedback from the platform summaries.
+## Current Bot Theme
 
-## Notes
+- Default category: `Sports`
+- Optional override via CLI: second argument can set any category
 
-My university studies focus on C#, so this was my first hands-on Java project.
-I used GitHub Copilot to help with Java syntax and boilerplate, while designing
-the overall bidding strategy myself.
+## Strategy Overview
+
+The bot combines:
+
+- Weighted impression value model
+- Epsilon-greedy arm selection for bid multiplier
+- Competition-aware shading (low/medium/high)
+- ROI gate to skip weak auctions
+- Budget pacing to avoid spending too early
+- Recovery path when the latest 100-round window had zero spend
+
+Main value signals:
+
+- Engagement (`comments / views`)
+- Interest/category affinity
+- Subscription signal
+- Reach (log-scaled view count)
+- Age-range overlap
+- Category match bonus
+
+
+
+## Troubleshooting
+
+- If bot spends too fast: lower bid factors and exposure cap.
+- If bot stalls (`L100 Spent = 0`): lower ROI threshold or enable recovery spending.
+- If score drops while wins are high: tighten ROI gate and reduce noisy affinity matches.
