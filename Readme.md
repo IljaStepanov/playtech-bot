@@ -25,11 +25,3 @@ every 100 rounds using efficiency feedback from the platform summaries.
 My university studies focus on C#, so this was my first hands-on Java project.
 I used GitHub Copilot to help with Java syntax and boilerplate, while designing
 the overall bidding strategy myself.
-
-## How to run
-
-Compile:
-    javac AdBot.java
-
-Run:
-    java AdBot 10000000
