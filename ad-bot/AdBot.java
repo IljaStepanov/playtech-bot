@@ -168,6 +168,28 @@ public class AdBot {
 				&& videoCategory.trim().equalsIgnoreCase(MY_CATEGORY.trim());
 	}
 
+	private static double calculateCategoryAffinity(String videoCategory, String[] interests) {
+		if (videoCategory == null || videoCategory.trim().isEmpty()) {
+			return 0.0;
+		}
+
+		if (isCategoryMatch(videoCategory)) {
+			return 1.0;
+		}
+
+		if (interests == null || interests.length == 0) {
+			return 0.0;
+		}
+
+		for (String interest : interests) {
+			if (interest != null && videoCategory.trim().equalsIgnoreCase(interest.trim())) {
+				return 0.8;
+			}
+		}
+
+		return 0.0;
+	}
+
 
 	private static int[] computeFinalBid(double estimatedValue, TrackingState state, int roundsRemaining) {
 		int armIndex = chooseArm(state);
